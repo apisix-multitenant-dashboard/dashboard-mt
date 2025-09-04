@@ -54,6 +54,10 @@ type LoginInput struct {
 	// password
 	Password string `json:"password" validate:"required"`
 }
+type CustomClaims struct {
+	Instance string `json:"instance"`
+	jwt.StandardClaims
+}
 
 // swagger:operation POST /apisix/admin/user/login userLogin
 //
@@ -63,25 +67,27 @@ type LoginInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: username
-//   in: body
-//   description: user name
-//   required: true
-//   type: string
-// - name: password
-//   in: body
-//   description: password
-//   required: true
-//   type: string
+//   - name: username
+//     in: body
+//     description: user name
+//     required: true
+//     type: string
+//   - name: password
+//     in: body
+//     description: password
+//     required: true
+//     type: string
+//
 // responses:
-//   '0':
-//     description: login success
-//     schema:
-//       "$ref": "#/definitions/ApiError"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: login success
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) userLogin(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*LoginInput)
 	username := input.Username
@@ -93,14 +99,16 @@ func (h *Handler) userLogin(c droplet.Context) (interface{}, error) {
 	}
 
 	// create JWT for session
-	claims := jwt.StandardClaims{
-		Subject:   username,
-		IssuedAt:  time.Now().Unix(),
-		ExpiresAt: time.Now().Add(time.Second * time.Duration(conf.AuthConf.ExpireTime)).Unix(),
+	claims := CustomClaims{
+		Instance: user.Instance,
+		StandardClaims: jwt.StandardClaims{
+			Subject:   username,
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: time.Now().Add(time.Second * time.Duration(conf.AuthConf.ExpireTime)).Unix(),
+		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, _ := token.SignedString([]byte(conf.AuthConf.Secret))
-
 	// output token
 	return &UserSession{
 		Token: signedToken,

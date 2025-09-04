@@ -157,7 +157,7 @@ const PluginFlow: React.FC<Props> = ({ chart, readonly = false }) => {
         />
         <div className={styles.panel}>
           <div className={styles.toolbar}>{isReady && <Toolbar />}</div>
-          <div id="container" className={styles.flow}></div>
+          <div id="container" className={styles.flow} />
         </div>
       </div>
       {pluginProps.visible && (

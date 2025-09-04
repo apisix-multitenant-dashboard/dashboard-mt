@@ -23,11 +23,15 @@
 */
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { Space, Tag, Tooltip } from 'antd';
+import { jwtDecode } from 'jwt-decode';
 import React from 'react';
 import { SelectLang, useModel } from 'umi';
 
+import ClusterSelector from '../Cluster/ClusterSelector';
 import Avatar from './AvatarDropdown';
 import styles from './index.less';
+
+
 
 export type SiderTheme = 'light' | 'dark';
 
@@ -50,16 +54,19 @@ const GlobalHeaderRight: React.FC = () => {
   if ((navTheme === 'dark' && layout === 'top') || layout === 'mix') {
     className = `${styles.right}  ${styles.dark}`;
   }
-
+   const token = localStorage.getItem('token');
+    const instance = token ? jwtDecode<{ instance: string }>(token).instance : '';
   return (
     <Space className={className}>
-      <a href="https://apisix.apache.org/docs/apisix/getting-started" target="_blank">
+     
+      <a href="https://apisix.apache.org/docs/apisix/getting-started" target="_blank" rel="noreferrer">
         <Tooltip title="Documentation">
           <span className={styles.action}>
             <QuestionCircleOutlined />
           </span>
         </Tooltip>
       </a>
+      {!instance && <ClusterSelector />}
       <Avatar />
       {REACT_APP_ENV && (
         <span>

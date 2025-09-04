@@ -17,7 +17,7 @@
 import { GithubOutlined } from '@ant-design/icons';
 import { Button, notification, Tabs } from 'antd';
 import React, { useState } from 'react';
-import { history, Link, useIntl } from 'umi';
+import { history, useIntl } from 'umi';
 
 import logo from '@/assets/logo.svg';
 import Footer from '@/components/Footer';
@@ -27,6 +27,7 @@ import type { UserModule } from '@/pages/User/typing';
 import { SelectLang } from '@@/plugin-locale/SelectLang';
 
 import styles from './Login.less';
+import { useCluster } from '@/context/clusterContext';
 
 const Tab = Tabs.TabPane;
 
@@ -48,12 +49,13 @@ const Page: React.FC = () => {
       if (activeKey === item.id) setLoginMethod(loginMethods[index]);
     });
   };
-
+const { resetCluster } = useCluster();
   const onSubmit = () => {
     loginMethod.checkData().then((validate) => {
       if (validate) {
         loginMethod.submit(loginMethod.getData()).then((response) => {
           if (response.status) {
+            resetCluster();
             notification.success({
               message: formatMessage({ id: 'component.status.success' }),
               description: response.message,
@@ -100,9 +102,7 @@ const Page: React.FC = () => {
       <div className={styles.content}>
         <div className={styles.top}>
           <div className={styles.header}>
-            <Link to="/">
-              <img alt="logo" className={styles.logo} src={logo} />
-            </Link>
+            <img alt="logo" className={styles.logo} src={logo} />
           </div>
           <div className={styles.desc}>
             Apache APISIX Dashboard

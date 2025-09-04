@@ -74,7 +74,7 @@ const LoginMethodPassword: UserModule.LoginMethod = {
           >
             <a
               href="https://github.com/apache/apisix-dashboard/blob/master/api/conf/conf.yaml#L70-L75"
-              target="_blank"
+              target="_blank" rel="noreferrer"
             >
               {formatMessage({ id: 'component.user.loginMethodPassword.changeDefaultAccount' })}
             </a>

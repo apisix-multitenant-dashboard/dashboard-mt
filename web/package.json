@@ -7,7 +7,7 @@
     "prepare": "cd .. && husky install web/.husky",
     "analyze": "cross-env ANALYZE=1 yarn run build",
     "copy-folder": "node --experimental-modules copy-folder.mjs",
-    "build": "yarn copy-folder monaco-editor ./public/ && NODE_OPTIONS=--max_old_space_size=4096 umi build",
+    "build": "yarn copy-folder monaco-editor ./public/ && cross-env NODE_OPTIONS=--max_old_space_size=4096 umi build",
     "dev": "yarn run start:dev",
     "fetch:blocks": "pro fetch-blocks --branch antd@4 && yarn run prettier",
     "i18n-remove": "pro i18n-remove --locale=zh-CN --write",
@@ -51,6 +51,7 @@
     "not ie <= 10"
   ],
   "dependencies": {
+    "@ant-design/charts": "^2.6.2",
     "@ant-design/icons": "^4.0.0",
     "@ant-design/pro-layout": "^6.0.0",
     "@ant-design/pro-table": "2.30.8",
@@ -60,6 +61,7 @@
     "@rjsf/antd": "2.2.0",
     "@rjsf/core": "2.2.0",
     "@types/js-yaml": "^4.0.0",
+    "@umijs/max": "^4.4.12",
     "ahooks": "^3.7.1",
     "ajv": "^7.0.3",
     "ajv-formats": "^1.5.1",
@@ -71,9 +73,11 @@
     "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-simple-import-sort": "^8.0.0",
     "file-saver": "^2.0.5",
+    "framer-motion": "^12.23.12",
     "hexo-fs": "^3.1.0",
     "js-beautify": "^1.13.0",
     "js-yaml": "^4.0.0",
+    "jwt-decode": "^4.0.0",
     "lodash": "^4.17.11",
     "moment": "^2.29.2",
     "nzh": "1.0.4",
@@ -86,10 +90,12 @@
     "react-device-detect": "^1.12.1",
     "react-dom": "^16.8.6",
     "react-helmet-async": "^1.0.4",
+    "react-intl": "^7.1.11",
+    "recharts": "^3.1.2",
     "start-server-and-test": "^1.11.5",
     "styled-components": "^5.2.1",
     "umi": "^3.1.2",
-    "umi-request": "^1.0.8",
+    "umi-request": "^1.4.0",
     "use-merge-value": "^1.0.1",
     "uuid": "7.0.3",
     "yaml": "^1.10.0"
@@ -121,10 +127,9 @@
     "@umijs/plugin-esbuild": "^1.0.0-beta.2",
     "@umijs/preset-ant-design-pro": "^1.2.0",
     "@umijs/preset-react": "^1.7.11",
-    "@umijs/preset-ui": "^2.1.11",
     "babel-plugin-istanbul": "^6.0.0",
     "carlo": "^0.9.46",
-    "cross-env": "^7.0.0",
+    "cross-env": "^7.0.3",
     "cross-port-killer": "^1.1.1",
     "cypress": "^10.4.0",
     "cypress-file-upload": "^5.0.2",
@@ -160,5 +165,10 @@
     "src/**/*.less",
     "config/**/*.js*",
     "scripts/**/*.js"
-  ]
+  ],
+  "resolutions": {
+    "cheerio": "1.0.0-rc.12",
+    "commander": "7.2.0",
+    "minimatch": "^3.1.2"
+  }
 }

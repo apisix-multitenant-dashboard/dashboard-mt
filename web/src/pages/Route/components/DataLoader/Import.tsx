@@ -194,7 +194,7 @@ const DataLoaderImport: React.FC<Props> = (props) => {
               </Form.Item>
             </Col>
           </Row>
-          <Option type={importType}></Option>
+          <Option type={importType} />
           <Divider />
           <Row gutter={16}>
             <Col span={24}>

@@ -28,6 +28,7 @@ import { errorHandler, getMenuData, getUrlQuery } from '@/helpers';
 import { queryCurrent } from '@/services/user';
 
 import defaultSettings from '../config/defaultSettings';
+import { ClusterProvider } from './context/clusterContext';
 
 export async function getInitialState(): Promise<{
   currentUser?: API.CurrentUser;
@@ -45,9 +46,11 @@ export async function getInitialState(): Promise<{
     settings: defaultSettings,
   };
 }
-
 export const layout = ({ initialState }: { initialState: { settings?: LayoutSettings } }) => {
   return {
+    childrenRender: (children: React.ReactNode) => (
+      <ClusterProvider>{children}</ClusterProvider>
+    ),
     headerRender: undefined,
     rightContentRender: () => <RightContent />,
     disableContentMargin: false,
@@ -106,3 +109,7 @@ export const request: RequestConfig = {
     },
   ],
 };
+
+export function rootContainer(container: React.ReactNode) {
+  return <ClusterProvider>{container}</ClusterProvider>;
+}

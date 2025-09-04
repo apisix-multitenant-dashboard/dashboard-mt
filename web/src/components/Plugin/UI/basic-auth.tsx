@@ -43,7 +43,7 @@ const BasicAuth: React.FC<Props> = ({ form, schema }) => {
         rules={[{ required: required.indexOf('username') > -1 }]}
         validateTrigger={['onChange', 'onBlur', 'onClick']}
       >
-        <Input></Input>
+        <Input />
       </Form.Item>
       <Form.Item
         label="password"
@@ -51,7 +51,7 @@ const BasicAuth: React.FC<Props> = ({ form, schema }) => {
         rules={[{ required: required.indexOf('password') > -1 }]}
         validateTrigger={['onChange', 'onBlur', 'onClick']}
       >
-        <Input></Input>
+        <Input />
       </Form.Item>
     </Form>
   );
