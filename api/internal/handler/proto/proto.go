@@ -31,6 +31,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -84,8 +85,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	r, err := h.protoStore.Get(c.Context(), input.ID)
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
+	r, err := protoStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -100,8 +104,11 @@ type ListInput struct {
 
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-
-	ret, err := h.protoStore.List(c.Context(), store.ListInput{
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := protoStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.Desc != "" {
 				return strings.Contains(obj.(*entity.Proto).Desc, input.Desc)
@@ -120,11 +127,14 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 
 func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.Proto)
-
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
 	// check proto id exist
 	if input.ID != nil {
 		protoID := utils.InterfaceToString(input.ID)
-		ret, err := h.protoStore.Get(c.Context(), protoID)
+		ret, err := protoStore.Get(c.Context(), protoID)
 		if err != nil && err != data.ErrNotFound {
 			return handler.SpecCodeResponse(err), err
 		}
@@ -134,7 +144,7 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	}
 
 	// create
-	ret, err := h.protoStore.Create(c.Context(), input)
+	ret, err := protoStore.Create(c.Context(), input)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -149,7 +159,10 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.Proto.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -159,7 +172,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 		input.Proto.ID = input.ID
 	}
 
-	res, err := h.protoStore.Update(c.Context(), &input.Proto, true)
+	res, err := protoStore.Update(c.Context(), &input.Proto, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -178,8 +191,11 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 	reqBody := input.Body
 	id := input.ID
 	subPath := input.SubPath
-
-	stored, err := h.protoStore.Get(c.Context(), id)
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := protoStore.Get(c.Context(), id)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -195,7 +211,7 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 		return handler.SpecCodeResponse(err), err
 	}
 
-	ret, err := h.protoStore.Update(c.Context(), &proto, false)
+	ret, err := protoStore.Update(c.Context(), &proto, false)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -209,9 +225,34 @@ type BatchDeleteInput struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDeleteInput)
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
 
+	serviceStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
+
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	globalRuleStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil, err
+	}
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil, err
+	}
 	ids := strings.Split(input.IDs, ",")
-	checklist := []store.Interface{h.routeStore, h.consumerStore, h.serviceStore, h.pluginConfigStore, h.globalRuleStore}
+	checklist := []store.Interface{routeStore, consumerStore, serviceStore, pluginConfigStore, globalRuleStore}
 
 	for _, id := range ids {
 		for _, store := range checklist {
@@ -221,7 +262,7 @@ func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 		}
 	}
 
-	if err := h.protoStore.BatchDelete(c.Context(), ids); err != nil {
+	if err := protoStore.BatchDelete(c.Context(), ids); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 

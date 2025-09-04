@@ -29,6 +29,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -73,8 +74,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	pluginConfig, err := h.pluginConfigStore.Get(c.Context(), input.ID)
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	pluginConfig, err := pluginConfigStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -96,32 +100,34 @@ type ListInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: search
-//   in: query
-//   description: search keyword
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: search
+//     in: query
+//     description: search keyword
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/pluginConfig"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/pluginConfig"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
 	labelMap, err := utils.GenLabelMap(input.Label)
@@ -129,8 +135,11 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
 			fmt.Errorf("%s: \"%s\"", err.Error(), input.Label)
 	}
-
-	ret, err := h.pluginConfigStore.List(c.Context(), store.ListInput{
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := pluginConfigStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.Search != "" {
 				return strings.Contains(obj.(*entity.PluginConfig).Desc, input.Search)
@@ -154,8 +163,11 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 
 func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.PluginConfig)
-
-	ret, err := h.pluginConfigStore.Create(c.Context(), input)
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := pluginConfigStore.Create(c.Context(), input)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -170,7 +182,10 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.PluginConfig.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -179,8 +194,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	if input.ID != "" {
 		input.PluginConfig.ID = input.ID
 	}
-
-	ret, err := h.pluginConfigStore.Update(c.Context(), &input.PluginConfig, true)
+	ret, err := pluginConfigStore.Update(c.Context(), &input.PluginConfig, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -194,13 +208,20 @@ type BatchDelete struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDelete)
-
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
 	IDs := strings.Split(input.IDs, ",")
 	IDMap := map[string]bool{}
 	for _, id := range IDs {
 		IDMap[id] = true
 	}
-	ret, err := h.routeStore.List(c.Context(), store.ListInput{
+	ret, err := routeStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			id := utils.InterfaceToString(obj.(*entity.Route).PluginConfigID)
 			if _, ok := IDMap[id]; ok {
@@ -220,7 +241,7 @@ func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 				ret.Rows[0].(*entity.Route).ID)
 	}
 
-	if err := h.pluginConfigStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
+	if err := pluginConfigStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 
@@ -238,8 +259,11 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 	reqBody := input.Body
 	id := input.ID
 	subPath := input.SubPath
-
-	stored, err := h.pluginConfigStore.Get(c.Context(), id)
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := pluginConfigStore.Get(c.Context(), id)
 	if err != nil {
 		log.Warnf("get stored data from etcd failed: %s", err)
 		return handler.SpecCodeResponse(err), err
@@ -257,7 +281,7 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 		return handler.SpecCodeResponse(err), err
 	}
 
-	ret, err := h.pluginConfigStore.Update(c.Context(), &pluginConfig, false)
+	ret, err := pluginConfigStore.Update(c.Context(), &pluginConfig, false)
 	if err != nil {
 		log.Warnf("update failed: %s", err)
 		return handler.SpecCodeResponse(err), err

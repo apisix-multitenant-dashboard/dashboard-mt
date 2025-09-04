@@ -31,6 +31,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -65,8 +66,13 @@ type ExportInput struct {
 	IDs string `auto_read:"ids,path"`
 }
 
-//ExportRoutes Export data by passing route ID, such as "R1" or multiple route parameters, such as "R1,R2"
+// ExportRoutes Export data by passing route ID, such as "R1" or multiple route parameters, such as "R1,R2"
 func (h *Handler) ExportRoutes(c droplet.Context) (interface{}, error) {
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+
 	input := c.Input().(*ExportInput)
 
 	if input.IDs == "" {
@@ -77,7 +83,7 @@ func (h *Handler) ExportRoutes(c droplet.Context) (interface{}, error) {
 	routes := []*entity.Route{}
 
 	for _, id := range ids {
-		route, err := h.routeStore.Get(c.Context(), id)
+		route, err := routeStore.Get(c.Context(), id)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return nil, fmt.Errorf(consts.IDNotFound, "upstream", id)
@@ -111,9 +117,13 @@ var (
 	_allHTTPMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodHead, http.MethodConnect, http.MethodTrace, http.MethodOptions}
 )
 
-//ExportAllRoutes All routes can be directly exported without passing parameters
+// ExportAllRoutes All routes can be directly exported without passing parameters
 func (h *Handler) ExportAllRoutes(c droplet.Context) (interface{}, error) {
-	routelist, err := h.routeStore.List(c.Context(), store.ListInput{})
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	routelist, err := routeStore.List(c.Context(), store.ListInput{})
 
 	if err != nil {
 		return nil, err
@@ -136,7 +146,7 @@ func (h *Handler) ExportAllRoutes(c droplet.Context) (interface{}, error) {
 	return swagger, nil
 }
 
-//RouteToOpenAPI3 Pass in route list parameter: []*entity.Route, convert route data to openapi3 and export processing function
+// RouteToOpenAPI3 Pass in route list parameter: []*entity.Route, convert route data to openapi3 and export processing function
 func (h *Handler) RouteToOpenAPI3(c droplet.Context, routes []*entity.Route) (*openapi3.Swagger, error) {
 	paths := openapi3.Paths{}
 	paramsRefs := []*openapi3.ParameterRef{}
@@ -144,7 +154,10 @@ func (h *Handler) RouteToOpenAPI3(c droplet.Context, routes []*entity.Route) (*o
 	components := &openapi3.Components{}
 	secSchemas := openapi3.SecuritySchemes{}
 	_pathNumber := GetPathNumber()
-
+	serviceStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
 	for _, route := range routes {
 		extensions := make(map[string]interface{})
 		servicePlugins := make(map[string]interface{})
@@ -158,7 +171,7 @@ func (h *Handler) RouteToOpenAPI3(c droplet.Context, routes []*entity.Route) (*o
 
 		if route.ServiceID != nil {
 			serviceID := utils.InterfaceToString(route.ServiceID)
-			service, err = h.serviceStore.Get(c.Context(), serviceID)
+			service, err = serviceStore.Get(c.Context(), serviceID)
 			if err != nil {
 				if err == data.ErrNotFound {
 					return nil, fmt.Errorf(consts.IDNotFound, "service", route.ServiceID)
@@ -291,8 +304,8 @@ func (h *Handler) RouteToOpenAPI3(c droplet.Context, routes []*entity.Route) (*o
 	return &swagger, nil
 }
 
-//ParseLabels When service and route have labels at the same time, use route's label.
-//When route has no label, service sometimes uses service's label. This function is used to process this logic
+// ParseLabels When service and route have labels at the same time, use route's label.
+// When route has no label, service sometimes uses service's label. This function is used to process this logic
 func ParseLabels(route *entity.Route, serviceLabels map[string]string) (map[string]string, error) {
 	if route.Labels != nil {
 		return route.Labels, nil
@@ -302,7 +315,7 @@ func ParseLabels(route *entity.Route, serviceLabels map[string]string) (map[stri
 	return nil, nil
 }
 
-//ParsePathItem Convert data in route to openapi3
+// ParsePathItem Convert data in route to openapi3
 func ParsePathItem(path openapi3.Operation, routeMethod string) *openapi3.Operation {
 	_path := &openapi3.Operation{
 		ExtensionProps: path.ExtensionProps,
@@ -471,11 +484,15 @@ func (h *Handler) ParseRouteUpstream(c droplet.Context, route *entity.Route) (in
 	// If there is one, it will be used directly.
 	// If there is no route, the upstream data of service will be used.
 	// If there is no route, the upstream data of service will not be used normally.
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	if route.Upstream != nil {
 		return route.Upstream, nil
 	} else if route.UpstreamID != nil && route.Upstream == nil {
 		upstreamID := utils.InterfaceToString(route.UpstreamID)
-		upstream, err := h.upstreamStore.Get(c.Context(), upstreamID)
+		upstream, err := upstreamStore.Get(c.Context(), upstreamID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return nil, fmt.Errorf(consts.IDNotFound, "upstream", route.UpstreamID)
@@ -489,7 +506,7 @@ func (h *Handler) ParseRouteUpstream(c droplet.Context, route *entity.Route) (in
 			return _service.Upstream, nil
 		} else if _service.Upstream == nil && _service.UpstreamID != nil {
 			upstreamID := utils.InterfaceToString(_service.UpstreamID)
-			upstream, err := h.upstreamStore.Get(c.Context(), upstreamID)
+			upstream, err := upstreamStore.Get(c.Context(), upstreamID)
 			if err != nil {
 				if err == data.ErrNotFound {
 					return nil, fmt.Errorf(consts.IDNotFound, "upstream", _service.UpstreamID)

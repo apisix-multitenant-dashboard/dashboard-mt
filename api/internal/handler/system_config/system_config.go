@@ -25,6 +25,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -57,7 +58,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-	r, err := h.systemConfig.Get(c.Context(), input.ConfigName)
+	systemConfig, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySystemConfig)
+	if err != nil {
+		return nil, err
+	}
+	r, err := systemConfig.Get(c.Context(), input.ConfigName)
 
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
@@ -70,9 +75,12 @@ func (h *Handler) Post(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.SystemConfig)
 	input.CreateTime = time.Now().Unix()
 	input.UpdateTime = time.Now().Unix()
-
+	systemConfig, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySystemConfig)
+	if err != nil {
+		return nil, err
+	}
 	// create
-	res, err := h.systemConfig.Create(c.Context(), input)
+	res, err := systemConfig.Create(c.Context(), input)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -83,9 +91,12 @@ func (h *Handler) Post(c droplet.Context) (interface{}, error) {
 func (h *Handler) Put(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.SystemConfig)
 	input.UpdateTime = time.Now().Unix()
-
+	systemConfig, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySystemConfig)
+	if err != nil {
+		return nil, err
+	}
 	// update
-	res, err := h.systemConfig.Update(c.Context(), input, false)
+	res, err := systemConfig.Update(c.Context(), input, false)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -99,7 +110,11 @@ type DeleteInput struct {
 
 func (h *Handler) Delete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*DeleteInput)
-	err := h.systemConfig.BatchDelete(c.Context(), []string{input.ConfigName})
+	systemConfig, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySystemConfig)
+	if err != nil {
+		return nil, err
+	}
+	err = systemConfig.BatchDelete(c.Context(), []string{input.ConfigName})
 
 	if err != nil {
 		return handler.SpecCodeResponse(err), err

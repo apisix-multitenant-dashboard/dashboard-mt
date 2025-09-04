@@ -33,6 +33,7 @@ import (
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
 	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -110,8 +111,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	ret, err := h.sslStore.Get(c.Context(), input.ID)
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := sslStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -141,36 +145,41 @@ type ListInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: sni
-//   in: query
-//   description: sni of SSL
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: sni
+//     in: query
+//     description: sni of SSL
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/ssl"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/ssl"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-
-	ret, err := h.sslStore.List(c.Context(), store.ListInput{
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := sslStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.SNI != "" {
 				if strings.Contains(obj.(*entity.SSL).Sni, input.SNI) {
@@ -216,12 +225,15 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	if err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
 	}
-
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
 	ssl.ID = input.ID
 	ssl.Labels = input.Labels
 	//set default value for SSL status, if not set, it will be 0 which means disable.
 	ssl.Status = conf.SSLDefaultStatus
-	ret, err := h.sslStore.Create(c.Context(), ssl)
+	ret, err := sslStore.Create(c.Context(), ssl)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -240,7 +252,10 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.SSL.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -261,7 +276,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 
 	//set default value for SSL status, if not set, it will be 0 which means disable.
 	ssl.Status = conf.SSLDefaultStatus
-	ret, err := h.sslStore.Update(c.Context(), ssl, true)
+	ret, err := sslStore.Update(c.Context(), ssl, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -284,8 +299,11 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 	reqBody := input.Body
 	id := input.ID
 	subPath := input.SubPath
-
-	stored, err := h.sslStore.Get(c.Context(), id)
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := sslStore.Get(c.Context(), id)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -301,7 +319,7 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 		return handler.SpecCodeResponse(err), err
 	}
 
-	ret, err := h.sslStore.Update(c.Context(), &ssl, false)
+	ret, err := sslStore.Update(c.Context(), &ssl, false)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -319,8 +337,11 @@ type BatchDelete struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDelete)
-
-	if err := h.sslStore.BatchDelete(c.Context(), strings.Split(input.Ids, ",")); err != nil {
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
+	if err := sslStore.BatchDelete(c.Context(), strings.Split(input.Ids, ",")); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 
@@ -398,25 +419,27 @@ func ParseCert(crt, key string) (*entity.SSL, error) {
 // produces:
 // - application/json
 // parameters:
-// - name: cert
-//   in: body
-//   description: cert of SSL
-//   required: true
-//   type: string
-// - name: key
-//   in: body
-//   description: key of SSL
-//   required: true
-//   type: string
+//   - name: cert
+//     in: body
+//     description: cert of SSL
+//     required: true
+//     type: string
+//   - name: key
+//     in: body
+//     description: key of SSL
+//     required: true
+//     type: string
+//
 // responses:
-//   '0':
-//     description: SSL verify passed
-//     schema:
-//       "$ref": "#/definitions/ApiError"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: SSL verify passed
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) Validate(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.SSL)
 	ssl, err := ParseCert(input.Cert, input.Key)
@@ -453,30 +476,36 @@ type ExistCheckInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: hosts
-//   in: body
-//   description: hosts of Route
-//   required: true
-//   type: array
+//   - name: hosts
+//     in: body
+//     description: hosts of Route
+//     required: true
+//     type: array
 //     items:
 //     type: string
+//
 // responses:
-//   '0':
-//     description: SSL exists
-//     schema:
-//       "$ref": "#/definitions/ApiError"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: SSL exists
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) Exist(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ExistCheckInput)
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
 	if len(input.Hosts) == 0 {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
 			consts.InvalidParam("hosts could not be empty")
 	}
 
-	ret, err := h.sslStore.List(c.Context(), store.ListInput{
+	ret, err := sslStore.List(c.Context(), store.ListInput{
 		Predicate:  nil,
 		PageSize:   0,
 		PageNumber: 0,

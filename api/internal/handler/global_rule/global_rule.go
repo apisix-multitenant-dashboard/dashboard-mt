@@ -27,6 +27,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -69,8 +70,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	r, err := h.globalRuleStore.Get(c.Context(), input.ID)
+	globalRuleStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil, err
+	}
+	r, err := globalRuleStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -89,31 +93,36 @@ type ListInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/GlobalPlugins"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/GlobalPlugins"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-
-	ret, err := h.globalRuleStore.List(c.Context(), store.ListInput{
+	globalRuleStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := globalRuleStore.List(c.Context(), store.ListInput{
 		PageSize:   input.PageSize,
 		PageNumber: input.PageNumber,
 	})
@@ -131,7 +140,10 @@ type SetInput struct {
 
 func (h *Handler) Set(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*SetInput)
-
+	globalRuleStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.GlobalPlugins.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -142,7 +154,7 @@ func (h *Handler) Set(c droplet.Context) (interface{}, error) {
 		input.GlobalPlugins.ID = input.ID
 	}
 
-	ret, err := h.globalRuleStore.Update(c.Context(), &input.GlobalPlugins, true)
+	ret, err := globalRuleStore.Update(c.Context(), &input.GlobalPlugins, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -193,8 +205,11 @@ type BatchDeleteInput struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDeleteInput)
-
-	if err := h.globalRuleStore.BatchDelete(c.Context(), []string{input.ID}); err != nil {
+	globalRuleStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil, err
+	}
+	if err := globalRuleStore.BatchDelete(c.Context(), []string{input.ID}); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 

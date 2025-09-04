@@ -28,6 +28,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -67,7 +68,12 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-	streamRoute, err := h.streamRouteStore.Get(c.Context(), input.ID)
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
+
+	streamRoute, err := streamRouteStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -84,7 +90,12 @@ type ListInput struct {
 
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-	ret, err := h.streamRouteStore.List(c.Context(), store.ListInput{
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
+
+	ret, err := streamRouteStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.RemoteAddr != "" && !strings.Contains(obj.(*entity.StreamRoute).RemoteAddr, input.RemoteAddr) {
 				return false
@@ -115,10 +126,18 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 }
 
 func (h *Handler) Create(c droplet.Context) (interface{}, error) {
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	streamRoute := c.Input().(*entity.StreamRoute)
 	if streamRoute.UpstreamID != nil {
 		upstreamID := utils.InterfaceToString(streamRoute.UpstreamID)
-		_, err := h.upstreamStore.Get(c.Context(), upstreamID)
+		_, err := upstreamStore.Get(c.Context(), upstreamID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -127,7 +146,7 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 			return handler.SpecCodeResponse(err), err
 		}
 	}
-	create, err := h.streamRouteStore.Create(c.Context(), streamRoute)
+	create, err := streamRouteStore.Create(c.Context(), streamRoute)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -141,7 +160,14 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.StreamRoute.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -154,7 +180,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 
 	if input.UpstreamID != nil {
 		upstreamID := utils.InterfaceToString(input.UpstreamID)
-		_, err := h.upstreamStore.Get(c.Context(), upstreamID)
+		_, err := upstreamStore.Get(c.Context(), upstreamID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -163,7 +189,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 			return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
 		}
 	}
-	res, err := h.streamRouteStore.Update(c.Context(), &input.StreamRoute, true)
+	res, err := streamRouteStore.Update(c.Context(), &input.StreamRoute, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -177,8 +203,12 @@ type BatchDelete struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDelete)
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
 
-	if err := h.streamRouteStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
+	if err := streamRouteStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 

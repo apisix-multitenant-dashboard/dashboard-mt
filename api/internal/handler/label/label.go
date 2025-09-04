@@ -31,6 +31,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -108,35 +109,60 @@ func subsetOf(reqLabels map[string]struct{}, labels map[string]string) map[strin
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: label
-//   in: query
-//   description: label filter of labels
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: label
+//     in: query
+//     description: label filter of labels
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/service"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/service"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	serviceStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil, err
+	}
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil, err
+	}
 	typ := input.Type
 	reqLabels, err := utils.GenLabelMap(input.Label)
 	if err != nil {
@@ -147,20 +173,20 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	var items []interface{}
 	switch typ {
 	case "route":
-		items = append(items, h.routeStore)
+		items = append(items, routeStore)
 	case "service":
-		items = append(items, h.serviceStore)
+		items = append(items, serviceStore)
 	case "consumer":
-		items = append(items, h.consumerStore)
+		items = append(items, consumerStore)
 	case "ssl":
-		items = append(items, h.sslStore)
+		items = append(items, sslStore)
 	case "upstream":
-		items = append(items, h.upstreamStore)
+		items = append(items, upstreamStore)
 	case "plugin_config":
-		items = append(items, h.pluginConfigStore)
+		items = append(items, pluginConfigStore)
 	case "all":
-		items = append(items, h.routeStore, h.serviceStore, h.upstreamStore,
-			h.sslStore, h.consumerStore, h.pluginConfigStore)
+		items = append(items, routeStore, serviceStore, upstreamStore,
+			sslStore, consumerStore, pluginConfigStore)
 	}
 
 	predicate := func(obj interface{}) bool {

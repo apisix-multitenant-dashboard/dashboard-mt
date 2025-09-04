@@ -29,6 +29,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -82,8 +83,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	r, err := h.upstreamStore.Get(c.Context(), input.ID)
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	r, err := upstreamStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -96,7 +100,7 @@ func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 
 type ListInput struct {
 	Name string `auto_read:"name,query"`
-	ID string `auto_read:"id,query"`
+	ID   string `auto_read:"id,query"`
 	Desc string `auto_read:"desc,query"`
 	store.Pagination
 }
@@ -109,36 +113,42 @@ type ListInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: name
-//   in: query
-//   description: name of upstream
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: name
+//     in: query
+//     description: name of upstream
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/upstream"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/upstream"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	input := c.Input().(*ListInput)
 
-	ret, err := h.upstreamStore.List(c.Context(), store.ListInput{
+	ret, err := upstreamStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.Name != "" {
 				return strings.Contains(obj.(*entity.Upstream).Name, input.Name)
@@ -169,15 +179,18 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 
 func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*entity.Upstream)
-
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	// check name existed
-	ret, err := handler.NameExistCheck(c.Context(), h.upstreamStore, "upstream", input.Name, nil)
+	ret, err := handler.NameExistCheck(c.Context(), upstreamStore, "upstream", input.Name, nil)
 	if err != nil {
 		return ret, err
 	}
 
 	// create
-	res, err := h.upstreamStore.Create(c.Context(), input)
+	res, err := upstreamStore.Create(c.Context(), input)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -192,7 +205,10 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.Upstream.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -203,12 +219,12 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	}
 
 	// check name existed
-	ret, err := handler.NameExistCheck(c.Context(), h.upstreamStore, "upstream", input.Name, input.ID)
+	ret, err := handler.NameExistCheck(c.Context(), upstreamStore, "upstream", input.Name, input.ID)
 	if err != nil {
 		return ret, err
 	}
 
-	res, err := h.upstreamStore.Update(c.Context(), &input.Upstream, true)
+	res, err := upstreamStore.Update(c.Context(), &input.Upstream, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -222,14 +238,29 @@ type BatchDelete struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDelete)
-
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	serviceStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil, err
+	}
 	ids := strings.Split(input.IDs, ",")
 	mp := make(map[string]struct{})
 	for _, id := range ids {
 		mp[id] = struct{}{}
 	}
 
-	ret, err := h.routeStore.List(c.Context(), store.ListInput{
+	ret, err := routeStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			route := obj.(*entity.Route)
 			if _, exist := mp[utils.InterfaceToString(route.UpstreamID)]; exist {
@@ -250,7 +281,7 @@ func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 			fmt.Errorf("route: %s is using this upstream", ret.Rows[0].(*entity.Route).Name)
 	}
 
-	ret, err = h.serviceStore.List(c.Context(), store.ListInput{
+	ret, err = serviceStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			service := obj.(*entity.Service)
 			if _, exist := mp[utils.InterfaceToString(service.UpstreamID)]; exist {
@@ -271,7 +302,7 @@ func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 			fmt.Errorf("service: %s is using this upstream", ret.Rows[0].(*entity.Service).Name)
 	}
 
-	ret, err = h.streamRouteStore.List(c.Context(), store.ListInput{
+	ret, err = streamRouteStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			streamRoute := obj.(*entity.StreamRoute)
 			if _, exist := mp[utils.InterfaceToString(streamRoute.UpstreamID)]; exist {
@@ -292,7 +323,7 @@ func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 			fmt.Errorf("stream route: %s is using this upstream", ret.Rows[0].(*entity.StreamRoute).ID)
 	}
 
-	if err = h.upstreamStore.BatchDelete(c.Context(), ids); err != nil {
+	if err = upstreamStore.BatchDelete(c.Context(), ids); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 
@@ -310,8 +341,11 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 	reqBody := input.Body
 	id := input.ID
 	subPath := input.SubPath
-
-	stored, err := h.upstreamStore.Get(c.Context(), id)
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := upstreamStore.Get(c.Context(), id)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -327,7 +361,7 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 		return handler.SpecCodeResponse(err), err
 	}
 
-	ret, err := h.upstreamStore.Update(c.Context(), &upstream, false)
+	ret, err := upstreamStore.Update(c.Context(), &upstream, false)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -348,8 +382,11 @@ func (h *Handler) Exist(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ExistCheckInput)
 	name := input.Name
 	exclude := input.Exclude
-
-	ret, err := h.upstreamStore.List(c.Context(), store.ListInput{
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := upstreamStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			r := obj.(*entity.Upstream)
 			if r.Name == name && r.ID != exclude {
@@ -373,7 +410,11 @@ func (h *Handler) Exist(c droplet.Context) (interface{}, error) {
 }
 
 func (h *Handler) listUpstreamNames(c droplet.Context) (interface{}, error) {
-	ret, err := h.upstreamStore.List(c.Context(), store.ListInput{
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := upstreamStore.List(c.Context(), store.ListInput{
 		Predicate:  nil,
 		PageSize:   0,
 		PageNumber: 0,

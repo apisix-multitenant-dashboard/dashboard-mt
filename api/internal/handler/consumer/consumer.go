@@ -26,6 +26,7 @@ import (
 	"github.com/shiningrush/droplet/wrapper"
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -60,8 +61,11 @@ type GetInput struct {
 
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	r, err := h.consumerStore.Get(c.Context(), input.Username)
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
+	r, err := consumerStore.Get(c.Context(), input.Username)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -81,36 +85,41 @@ type ListInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: username
-//   in: query
-//   description: username of consumer
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: username
+//     in: query
+//     description: username of consumer
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/consumer"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/consumer"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ListInput)
-
-	ret, err := h.consumerStore.List(c.Context(), store.ListInput{
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := consumerStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.Username != "" {
 				return strings.Contains(obj.(*entity.Consumer).Username, input.Username)
@@ -149,18 +158,21 @@ func (h *Handler) Set(c droplet.Context) (interface{}, error) {
 		input.Consumer.Username = input.Username
 	}
 	ensurePluginsDefValue(input.Plugins)
-
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
 	// Because the ID of consumer has been removed,
 	// `BaseInfo` is no longer embedded in consumer's struct,
 	// So we need to maintain create_time and update_time separately for consumer
-	savedConsumer, _ := h.consumerStore.Get(c.Context(), input.Consumer.Username)
+	savedConsumer, _ := consumerStore.Get(c.Context(), input.Consumer.Username)
 	input.Consumer.CreateTime = time.Now().Unix()
 	input.Consumer.UpdateTime = time.Now().Unix()
 	if savedConsumer != nil {
 		input.Consumer.CreateTime = savedConsumer.(*entity.Consumer).CreateTime
 	}
 
-	ret, err := h.consumerStore.Update(c.Context(), &input.Consumer, true)
+	ret, err := consumerStore.Update(c.Context(), &input.Consumer, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -183,8 +195,11 @@ type BatchDeleteInput struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDeleteInput)
-
-	if err := h.consumerStore.BatchDelete(c.Context(), strings.Split(input.UserNames, ",")); err != nil {
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil, err
+	}
+	if err := consumerStore.BatchDelete(c.Context(), strings.Split(input.UserNames, ",")); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 

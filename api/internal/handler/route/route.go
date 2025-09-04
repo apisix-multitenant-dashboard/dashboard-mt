@@ -34,6 +34,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 
 	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -93,8 +94,11 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 	reqBody := input.Body
 	ID := input.ID
 	subPath := input.SubPath
-
-	stored, err := h.routeStore.Get(c.Context(), ID)
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := routeStore.Get(c.Context(), ID)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -110,7 +114,7 @@ func (h *Handler) Patch(c droplet.Context) (interface{}, error) {
 		return handler.SpecCodeResponse(err), err
 	}
 
-	ret, err := h.routeStore.Update(c.Context(), &route, false)
+	ret, err := routeStore.Update(c.Context(), &route, false)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -130,53 +134,62 @@ type GetInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: page
-//   in: query
-//   description: page number
-//   required: false
-//   type: integer
-// - name: page_size
-//   in: query
-//   description: page size
-//   required: false
-//   type: integer
-// - name: name
-//   in: query
-//   description: name of route
-//   required: false
-//   type: string
-// - name: uri
-//   in: query
-//   description: uri of route
-//   required: false
-//   type: string
-// - name: label
-//   in: query
-//   description: label of route
-//   required: false
-//   type: string
+//   - name: page
+//     in: query
+//     description: page number
+//     required: false
+//     type: integer
+//   - name: page_size
+//     in: query
+//     description: page size
+//     required: false
+//     type: integer
+//   - name: name
+//     in: query
+//     description: name of route
+//     required: false
+//     type: string
+//   - name: uri
+//     in: query
+//     description: uri of route
+//     required: false
+//     type: string
+//   - name: label
+//     in: query
+//     description: label of route
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: list response
-//     schema:
-//       type: array
-//       items:
-//         "$ref": "#/definitions/route"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: list response
+//	  schema:
+//	    type: array
+//	    items:
+//	      "$ref": "#/definitions/route"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) Get(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*GetInput)
-
-	r, err := h.routeStore.Get(c.Context(), input.ID)
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	scriptStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyScript)
+	if err != nil {
+		return nil, err
+	}
+	r, err := routeStore.Get(c.Context(), input.ID)
 	if err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusNotFound}, err
 	}
 
 	//format respond
 	route := r.(*entity.Route)
-	script, _ := h.scriptStore.Get(c.Context(), input.ID)
+	script, _ := scriptStore.Get(c.Context(), input.ID)
 	if script != nil {
 		route.Script = script.(*entity.Script).Script
 	}
@@ -194,9 +207,9 @@ type ListInput struct {
 	URI    string `auto_read:"uri,query"`
 	Label  string `auto_read:"label,query"`
 	Status string `auto_read:"status,query"`
-	Host string `auto_read:"host,query"`
-	ID string `auto_read:"id,query"`
-	Desc string `auto_read:"desc,query"`
+	Host   string `auto_read:"host,query"`
+	ID     string `auto_read:"id,query"`
+	Desc   string `auto_read:"desc,query"`
 	store.Pagination
 }
 
@@ -214,14 +227,22 @@ func uriContains(obj *entity.Route, uri string) bool {
 }
 
 func (h *Handler) List(c droplet.Context) (interface{}, error) {
+
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	scriptStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyScript)
+	if err != nil {
+		return nil, err
+	}
 	input := c.Input().(*ListInput)
 	labelMap, err := utils.GenLabelMap(input.Label)
 	if err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
 			fmt.Errorf("%s: \"%s\"", err.Error(), input.Label)
 	}
-
-	ret, err := h.routeStore.List(c.Context(), store.ListInput{
+	ret, err := routeStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			if input.Name != "" && !strings.Contains(obj.(*entity.Route).Name, input.Name) {
 				return false
@@ -265,7 +286,7 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 		PageSize:   input.PageSize,
 		PageNumber: input.PageNumber,
 	})
-
+	fmt.Printf("[HANDLER] Récupération de la route store: %s", ret)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +296,7 @@ func (h *Handler) List(c droplet.Context) (interface{}, error) {
 	for i, item := range ret.Rows {
 		route = item.(*entity.Route)
 		id := utils.InterfaceToString(route.ID)
-		script, _ := h.scriptStore.Get(c.Context(), id)
+		script, _ := scriptStore.Get(c.Context(), id)
 		if script != nil {
 			route.Script = script.(*entity.Script).Script
 		}
@@ -323,11 +344,27 @@ func generateLuaCode(script map[string]interface{}) (string, error) {
 }
 
 func (h *Handler) Create(c droplet.Context) (interface{}, error) {
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	svcStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	scriptStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyScript)
+	if err != nil {
+		return nil, err
+	}
 	input := c.Input().(*entity.Route)
 	//check depend
 	if input.ServiceID != nil {
 		serviceID := utils.InterfaceToString(input.ServiceID)
-		_, err := h.svcStore.Get(c.Context(), serviceID)
+		_, err := svcStore.Get(c.Context(), serviceID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -338,7 +375,7 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	}
 	if input.UpstreamID != nil {
 		upstreamID := utils.InterfaceToString(input.UpstreamID)
-		_, err := h.upstreamStore.Get(c.Context(), upstreamID)
+		_, err := upstreamStore.Get(c.Context(), upstreamID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -381,7 +418,7 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 		}
 
 		//save original conf
-		if _, err = h.scriptStore.Create(c.Context(), script); err != nil {
+		if _, err = scriptStore.Create(c.Context(), script); err != nil {
 			return nil, err
 		}
 
@@ -397,13 +434,13 @@ func (h *Handler) Create(c droplet.Context) (interface{}, error) {
 	}
 
 	// check name existed
-	ret, err := handler.NameExistCheck(c.Context(), h.routeStore, "route", input.Name, nil)
+	ret, err := handler.NameExistCheck(c.Context(), routeStore, "route", input.Name, nil)
 	if err != nil {
 		return ret, err
 	}
 
 	// create
-	res, err := h.routeStore.Create(c.Context(), input)
+	res, err := routeStore.Create(c.Context(), input)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -418,7 +455,22 @@ type UpdateInput struct {
 
 func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*UpdateInput)
-
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	svcStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil, err
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil, err
+	}
+	scriptStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyScript)
+	if err != nil {
+		return nil, err
+	}
 	// check if ID in body is equal ID in path
 	if err := handler.IDCompare(input.ID, input.Route.ID); err != nil {
 		return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest}, err
@@ -432,7 +484,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	//check depend
 	if input.ServiceID != nil {
 		serviceID := utils.InterfaceToString(input.ServiceID)
-		_, err := h.svcStore.Get(c.Context(), serviceID)
+		_, err := svcStore.Get(c.Context(), serviceID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -443,7 +495,7 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 	}
 	if input.UpstreamID != nil {
 		upstreamID := utils.InterfaceToString(input.UpstreamID)
-		_, err := h.upstreamStore.Get(c.Context(), upstreamID)
+		_, err := upstreamStore.Get(c.Context(), upstreamID)
 		if err != nil {
 			if err == data.ErrNotFound {
 				return &data.SpecCodeResponse{StatusCode: http.StatusBadRequest},
@@ -483,10 +535,10 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 		}
 
 		//save original conf
-		if _, err = h.scriptStore.Update(c.Context(), script, true); err != nil {
+		if _, err = scriptStore.Update(c.Context(), script, true); err != nil {
 			//if not exists, create
 			if err.Error() == fmt.Sprintf("key: %s is not found", script.ID) {
-				if _, err := h.scriptStore.Create(c.Context(), script); err != nil {
+				if _, err := scriptStore.Create(c.Context(), script); err != nil {
 					return handler.SpecCodeResponse(err), err
 				}
 			} else {
@@ -505,22 +557,22 @@ func (h *Handler) Update(c droplet.Context) (interface{}, error) {
 		}
 		//remove exists script
 		id := utils.InterfaceToString(input.Route.ID)
-		script, _ := h.scriptStore.Get(c.Context(), id)
+		script, _ := scriptStore.Get(c.Context(), id)
 		if script != nil {
-			if err := h.scriptStore.BatchDelete(c.Context(), strings.Split(id, ",")); err != nil {
+			if err := scriptStore.BatchDelete(c.Context(), strings.Split(id, ",")); err != nil {
 				log.Warnf("delete script %s failed", input.Route.ID)
 			}
 		}
 	}
 
 	// check name existed
-	ret, err := handler.NameExistCheck(c.Context(), h.routeStore, "route", input.Name, input.ID)
+	ret, err := handler.NameExistCheck(c.Context(), routeStore, "route", input.Name, input.ID)
 	if err != nil {
 		return ret, err
 	}
 
 	// create
-	res, err := h.routeStore.Update(c.Context(), &input.Route, true)
+	res, err := routeStore.Update(c.Context(), &input.Route, true)
 	if err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
@@ -534,17 +586,24 @@ type BatchDelete struct {
 
 func (h *Handler) BatchDelete(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*BatchDelete)
-
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	scriptStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyScript)
+	if err != nil {
+		return nil, err
+	}
 	//delete route
-	if err := h.routeStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
+	if err := routeStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
 		return handler.SpecCodeResponse(err), err
 	}
 
 	//delete stored script
-	if err := h.scriptStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
+	if err := scriptStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
 		//try again
 		log.Warn("try to delete script %s again", input.IDs)
-		if err := h.scriptStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
+		if err := scriptStore.BatchDelete(c.Context(), strings.Split(input.IDs, ",")); err != nil {
 			return nil, nil
 		}
 	}
@@ -565,31 +624,36 @@ type ExistCheckInput struct {
 // produces:
 // - application/json
 // parameters:
-// - name: name
-//   in: query
-//   description: name of route
-//   required: false
-//   type: string
-// - name: exclude
-//   in: query
-//   description: id of route that exclude checking
-//   required: false
-//   type: string
+//   - name: name
+//     in: query
+//     description: name of route
+//     required: false
+//     type: string
+//   - name: exclude
+//     in: query
+//     description: id of route that exclude checking
+//     required: false
+//     type: string
+//
 // responses:
-//   '0':
-//     description: route not exists
-//     schema:
-//       "$ref": "#/definitions/ApiError"
-//   default:
-//     description: unexpected error
-//     schema:
-//       "$ref": "#/definitions/ApiError"
+//
+//	'0':
+//	  description: route not exists
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
+//	default:
+//	  description: unexpected error
+//	  schema:
+//	    "$ref": "#/definitions/ApiError"
 func (h *Handler) Exist(c droplet.Context) (interface{}, error) {
 	input := c.Input().(*ExistCheckInput)
 	name := input.Name
 	exclude := input.Exclude
-
-	ret, err := h.routeStore.List(c.Context(), store.ListInput{
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := routeStore.List(c.Context(), store.ListInput{
 		Predicate: func(obj interface{}) bool {
 			r := obj.(*entity.Route)
 			if r.Name == name && r.ID != exclude {

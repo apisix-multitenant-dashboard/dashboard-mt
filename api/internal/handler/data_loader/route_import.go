@@ -31,6 +31,7 @@ import (
 	wgin "github.com/shiningrush/droplet/wrapper/gin"
 
 	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/handler"
@@ -140,9 +141,13 @@ func (h *ImportHandler) Import(c droplet.Context) (interface{}, error) {
 // domain name and uri.
 func (h *ImportHandler) preCheck(ctx context.Context, data *loader.DataSets) map[store.HubKey][]string {
 	errs := make(map[store.HubKey][]string)
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil
+	}
 	for _, route := range data.Routes {
 		errs[store.HubKeyRoute] = make([]string, 0)
-		o, err := h.routeStore.List(ctx, store.ListInput{
+		o, err := routeStore.List(ctx, store.ListInput{
 			// The check logic here is that if when a duplicate HOST or URI
 			// has been found, the HTTP method is checked for overlap, and
 			// if there is overlap it is determined to be a duplicate route
@@ -201,57 +206,92 @@ func (h *ImportHandler) preCheck(ctx context.Context, data *loader.DataSets) map
 // Create parsed resources
 func (h *ImportHandler) createEntities(ctx context.Context, data *loader.DataSets) map[store.HubKey][]string {
 	errs := make(map[store.HubKey][]string)
-
+	routeStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyRoute)
+	if err != nil {
+		return nil
+	}
+	upstreamStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyUpstream)
+	if err != nil {
+		return nil
+	}
+	serviceStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyService)
+	if err != nil {
+		return nil
+	}
+	consumerStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyConsumer)
+	if err != nil {
+		return nil
+	}
+	sslStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeySsl)
+	if err != nil {
+		return nil
+	}
+	streamRouteStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyStreamRoute)
+	if err != nil {
+		return nil
+	}
+	globalPluginStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyGlobalRule)
+	if err != nil {
+		return nil
+	}
+	pluginConfigStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyPluginConfig)
+	if err != nil {
+		return nil
+	}
+	protoStore, err := store.GetStoreFromContext(context_global.ContextGlobal, store.HubKeyProto)
+	if err != nil {
+		return nil
+	}
 	for _, route := range data.Routes {
-		_, err := h.routeStore.Create(ctx, &route)
+		_, err := routeStore.Create(ctx, &route)
 		if err != nil {
 			errs[store.HubKeyRoute] = append(errs[store.HubKeyRoute], err.Error())
 		}
 	}
 	for _, upstream := range data.Upstreams {
-		_, err := h.upstreamStore.Create(ctx, &upstream)
+		_, err := upstreamStore.Create(ctx, &upstream)
 		if err != nil {
 			errs[store.HubKeyUpstream] = append(errs[store.HubKeyUpstream], err.Error())
 		}
 	}
 	for _, service := range data.Services {
-		_, err := h.serviceStore.Create(ctx, &service)
+		_, err := serviceStore.Create(ctx, &service)
 		if err != nil {
 			errs[store.HubKeyService] = append(errs[store.HubKeyService], err.Error())
 		}
 	}
 	for _, consumer := range data.Consumers {
-		_, err := h.consumerStore.Create(ctx, &consumer)
+		_, err := consumerStore.Create(ctx, &consumer)
 		if err != nil {
 			errs[store.HubKeyConsumer] = append(errs[store.HubKeyConsumer], err.Error())
 		}
 	}
 	for _, ssl := range data.SSLs {
-		_, err := h.sslStore.Create(ctx, &ssl)
+		_, err := sslStore.Create(ctx, &ssl)
 		if err != nil {
 			errs[store.HubKeySsl] = append(errs[store.HubKeySsl], err.Error())
 		}
 	}
 	for _, route := range data.StreamRoutes {
-		_, err := h.streamRouteStore.Create(ctx, &route)
+		_, err := streamRouteStore.Create(ctx, &route)
 		if err != nil {
 			errs[store.HubKeyStreamRoute] = append(errs[store.HubKeyStreamRoute], err.Error())
 		}
 	}
 	for _, plugin := range data.GlobalPlugins {
-		_, err := h.globalPluginStore.Create(ctx, &plugin)
+		_, err := globalPluginStore.Create(ctx, &plugin)
 		if err != nil {
 			errs[store.HubKeyGlobalRule] = append(errs[store.HubKeyGlobalRule], err.Error())
 		}
 	}
 	for _, config := range data.PluginConfigs {
-		_, err := h.pluginConfigStore.Create(ctx, &config)
+		_, err := pluginConfigStore.Create(ctx, &config)
 		if err != nil {
 			errs[store.HubKeyPluginConfig] = append(errs[store.HubKeyPluginConfig], err.Error())
 		}
 	}
 	for _, proto := range data.Protos {
-		_, err := h.protoStore.Create(ctx, &proto)
+		_, err := protoStore.Create(ctx, &proto)
 		if err != nil {
 			errs[store.HubKeyProto] = append(errs[store.HubKeyProto], err.Error())
 		}
