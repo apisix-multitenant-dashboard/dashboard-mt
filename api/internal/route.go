@@ -35,6 +35,7 @@ import (
 	"github.com/apisix/manager-api/internal/handler/healthz"
 	"github.com/apisix/manager-api/internal/handler/label"
 	"github.com/apisix/manager-api/internal/handler/migrate"
+	"github.com/apisix/manager-api/internal/handler/monitoring"
 	"github.com/apisix/manager-api/internal/handler/plugin_config"
 	"github.com/apisix/manager-api/internal/handler/proto"
 	"github.com/apisix/manager-api/internal/handler/route"
@@ -47,6 +48,7 @@ import (
 	"github.com/apisix/manager-api/internal/handler/tool"
 	"github.com/apisix/manager-api/internal/handler/upstream"
 	"github.com/apisix/manager-api/internal/log"
+	"github.com/apisix/manager-api/internal/middleware"
 )
 
 func SetUpRouter() *gin.Engine {
@@ -56,6 +58,7 @@ func SetUpRouter() *gin.Engine {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	r.Use(middleware.CORSMiddleware())
 	logger := log.GetLogger(log.AccessLog)
 	// security
 	r.Use(filter.RequestLogHandler(logger), filter.IPFilter(), filter.InvalidRequest())
@@ -103,8 +106,9 @@ func SetUpRouter() *gin.Engine {
 		}
 		h.ApplyRoute(r)
 	}
-
+	r.GET("/clusters", handler.GetClusters)
+	r.POST("/cluster-switch", handler.ClusterSwitchHandler)
+	r.GET("/admin/monitoring/summary", monitoring.MonitoringSummary)
 	// pprof.Register(r)
-
 	return r
 }

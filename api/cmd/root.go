@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/server"
 	"github.com/apisix/manager-api/internal/core/storage"
 	"github.com/apisix/manager-api/internal/core/store"
@@ -116,7 +117,8 @@ func etcdConnectionChecker() context.CancelFunc {
 					// When this happens, force a full re-initialization of the store
 					store.RangeStore(func(key store.HubKey, store *store.GenericStore) bool {
 						log.Warnf("etcd store reinitializing: resource: %s", key)
-						if err := store.Init(); err != nil {
+						ctx := context_global.ContextGlobal
+						if err := store.Init(ctx); err != nil {
 							log.Errorf("etcd store reinitialize failed: resource: %s, error: %s", key, err)
 						}
 						return true
@@ -135,7 +137,7 @@ func etcdConnectionChecker() context.CancelFunc {
 		for {
 			select {
 			case <-time.Tick(2 * time.Minute):
-				err := store.ReInit()
+				err := store.ReInit(ctx)
 				if err != nil {
 					log.Errorf("resource re-initialize failed, err: %v", err)
 				}

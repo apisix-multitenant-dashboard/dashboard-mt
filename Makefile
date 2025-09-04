@@ -36,24 +36,30 @@ help:
 ### build:		Build the Apache APISIX Dashboard, including web and manager-api
 .PHONY: build
 build: web-default api-default
-	api/build.sh && cd ./web && export CYPRESS_INSTALL_BINARY=0  && yarn install --ignore-scripts && yarn build  && mkdir -p ../output/logs
+	api/build.sh && cd ./web && export CYPRESS_INSTALL_BINARY=0  && yarn install --ignore-scripts --ignore-engines && cross-env NODE_OPTIONS=--max_old_space_size=4096 yarn build  && mkdir -p ../output/logs
 
 
 .PHONY: web-default
+# web-default:
+# ifeq ("$(wildcard $(YARN_EXEC))", "")
+# 	@echo "ERROR: Need to install yarn first"
+# 	exit 1
+# endif
 web-default:
-ifeq ("$(wildcard $(YARN_EXEC))", "")
-	@echo "ERROR: Need to install yarn first"
-	exit 1
+ifndef YARN_EXEC
+	$(error ERROR: Need to install yarn first)
 endif
-
 
 .PHONY: api-default
+# api-default:
+# ifeq ("$(wildcard $(GO_EXEC))", "")
+# 	@echo "ERROR: Need to install golang 1.15+ first"
+# 	exit 1
+# endif
 api-default:
-ifeq ("$(wildcard $(GO_EXEC))", "")
-	@echo "ERROR: Need to install golang 1.15+ first"
-	exit 1
+ifndef GO_EXEC
+	$(error ERROR: Need to install golang 1.15+ first)
 endif
-
 
 ### dag-lib:            Download the dag-lib
 .PHONY: dag-lib

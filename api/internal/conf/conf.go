@@ -25,12 +25,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/apisix/manager-api/internal/utils"
 	"github.com/gorilla/sessions"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"golang.org/x/oauth2"
-
-	"github.com/apisix/manager-api/internal/utils"
 )
 
 const (
@@ -124,11 +123,18 @@ type Conf struct {
 	AllowList []string `mapstructure:"allow_list"`
 	MaxCpu    int      `mapstructure:"max_cpu"`
 	Security  Security
+	Clusters  map[string]ClusterConfig `mapstructure:"clusters" yaml:"clusters"`
+}
+type ClusterConfig struct {
+	Prefix        string `mapstructure:"prefix" yaml:"prefix"`
+	AdminURL      string `mapstructure:"adminURL" yaml:"adminURL"`
+	PrometheusURL string `mapstructure:"prometheusURL" yaml:"prometheusURL"`
 }
 
 type User struct {
 	Username string
 	Password string
+	Instance string
 }
 
 type Authentication struct {
@@ -184,6 +190,8 @@ func InitConf() {
 	initSchema()
 }
 
+var GlobalConf Conf
+
 func setupConfig() {
 	// setup config file path
 	if ConfigFile == "" {
@@ -209,7 +217,7 @@ func setupConfig() {
 	if err != nil {
 		panic(fmt.Sprintf("fail to unmarshal configuration: %s, err: %s", ConfigFile, err.Error()))
 	}
-
+	GlobalConf = config.Conf
 	// listen
 	if config.Conf.Listen.Port != 0 {
 		ServerPort = config.Conf.Listen.Port
