@@ -17,10 +17,13 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/log"
 	"github.com/apisix/manager-api/internal/utils"
@@ -44,8 +47,87 @@ const (
 )
 
 var (
-	storeHub = map[HubKey]*GenericStore{}
+	storeHub   = map[HubKey]*GenericStore{}
+	storeHubs  sync.Map
+	createLock sync.Mutex
 )
+
+func ensureStoreHub(prefix string) (map[HubKey]*GenericStore, error) {
+	if prefix == "" {
+		prefix = "/apisix"
+	}
+
+	if v, ok := storeHubs.Load(prefix); ok {
+		return v.(map[HubKey]*GenericStore), nil
+	}
+
+	createLock.Lock()
+	defer createLock.Unlock()
+
+	if v, ok := storeHubs.Load(prefix); ok {
+		return v.(map[HubKey]*GenericStore), nil
+	}
+
+	oldStoreHub := storeHub
+	storeHub = make(map[HubKey]*GenericStore)
+
+	oldPrefix := conf.ETCDConfig.Prefix
+	conf.ETCDConfig.Prefix = prefix
+
+	if err := InitStores(); err != nil {
+
+		conf.ETCDConfig.Prefix = oldPrefix
+		storeHub = oldStoreHub
+		return nil, fmt.Errorf("InitStores for prefix %s failed: %w", prefix, err)
+	}
+
+	newMap := make(map[HubKey]*GenericStore)
+	for k, s := range storeHub {
+		newMap[k] = s
+	}
+
+	storeHubs.Store(prefix, newMap)
+
+	conf.ETCDConfig.Prefix = oldPrefix
+	storeHub = oldStoreHub
+
+	return newMap, nil
+}
+
+func GetStoreByPrefix(prefix string, key HubKey) (*GenericStore, error) {
+	stores, err := ensureStoreHub(prefix)
+	if err != nil {
+		return nil, err
+	}
+	if s, ok := stores[key]; ok && s != nil {
+		return s, nil
+	}
+	return nil, fmt.Errorf("no store with key %s for prefix %s", key, prefix)
+}
+
+func GetStoreFromContext(ctx context.Context, key HubKey) (*GenericStore, error) {
+	prefix, _ := ctx.Value("etcdPrefix").(string)
+	if prefix == "" {
+		prefix = conf.ETCDConfig.Prefix
+	}
+	return GetStoreByPrefix(prefix, key)
+}
+
+func CloseStoreHub(prefix string) error {
+	v, ok := storeHubs.Load(prefix)
+	if !ok {
+		return nil
+	}
+	stores := v.(map[HubKey]*GenericStore)
+	for _, s := range stores {
+		if s != nil {
+			s.ClearCache()
+			s.Close()
+		}
+	}
+	storeHubs.Delete(prefix)
+	return nil
+}
 
 func InitStore(key HubKey, opt GenericStoreOption) error {
 	hubsNeedCheck := map[HubKey]bool{
@@ -72,7 +154,8 @@ func InitStore(key HubKey, opt GenericStoreOption) error {
 		log.Errorf("NewGenericStore error: %s", err)
 		return err
 	}
-	if err := s.Init(); err != nil {
+	ctx := context_global.ContextGlobal
+	if err := s.Init(ctx); err != nil {
 		log.Errorf("GenericStore init error: %s", err)
 		return err
 	}
@@ -98,11 +181,25 @@ func RangeStore(f func(key HubKey, store *GenericStore) bool) {
 		}
 	}
 }
+func (s *GenericStore) ClearCache() {
+	s.cache = sync.Map{}
+}
 
 func InitStores() error {
 	err := InitStore(HubKeyConsumer, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/consumers",
-		ObjType:  reflect.TypeOf(entity.Consumer{}),
+
+		BasePathFunc: func() string {
+
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+
+			return prefix + "/consumers"
+		},
+		ObjType: reflect.TypeOf(entity.Consumer{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Consumer)
 			return r.Username
@@ -113,8 +210,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyRoute, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/routes",
-		ObjType:  reflect.TypeOf(entity.Route{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+
+			return prefix + "/routes"
+		},
+		ObjType: reflect.TypeOf(entity.Route{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Route)
 			return utils.InterfaceToString(r.ID)
@@ -125,8 +231,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyService, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/services",
-		ObjType:  reflect.TypeOf(entity.Service{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/services"
+		},
+
+		ObjType: reflect.TypeOf(entity.Service{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Service)
 			return utils.InterfaceToString(r.ID)
@@ -137,8 +252,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeySsl, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/ssls",
-		ObjType:  reflect.TypeOf(entity.SSL{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/ssls"
+		},
+
+		ObjType: reflect.TypeOf(entity.SSL{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.SSL)
 			return utils.InterfaceToString(r.ID)
@@ -149,8 +273,16 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyUpstream, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/upstreams",
-		ObjType:  reflect.TypeOf(entity.Upstream{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/upstreams"
+		},
+		ObjType: reflect.TypeOf(entity.Upstream{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Upstream)
 			return utils.InterfaceToString(r.ID)
@@ -161,8 +293,16 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyScript, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/scripts",
-		ObjType:  reflect.TypeOf(entity.Script{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/scripts"
+		},
+		ObjType: reflect.TypeOf(entity.Script{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Script)
 			return r.ID
@@ -173,8 +313,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyGlobalRule, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/global_rules",
-		ObjType:  reflect.TypeOf(entity.GlobalPlugins{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/global_rules"
+		},
+
+		ObjType: reflect.TypeOf(entity.GlobalPlugins{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.GlobalPlugins)
 			return utils.InterfaceToString(r.ID)
@@ -185,8 +334,16 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyServerInfo, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/data_plane/server_info",
-		ObjType:  reflect.TypeOf(entity.ServerInfo{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/data_plane/server_info"
+		},
+		ObjType: reflect.TypeOf(entity.ServerInfo{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.ServerInfo)
 			return utils.InterfaceToString(r.ID)
@@ -197,8 +354,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyPluginConfig, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/plugin_configs",
-		ObjType:  reflect.TypeOf(entity.PluginConfig{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/plugin_configs"
+		},
+
+		ObjType: reflect.TypeOf(entity.PluginConfig{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.PluginConfig)
 			return utils.InterfaceToString(r.ID)
@@ -209,8 +375,17 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyProto, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/protos",
-		ObjType:  reflect.TypeOf(entity.Proto{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/protos"
+		},
+
+		ObjType: reflect.TypeOf(entity.Proto{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.Proto)
 			return utils.InterfaceToString(r.ID)
@@ -221,8 +396,16 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeyStreamRoute, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/stream_routes",
-		ObjType:  reflect.TypeOf(entity.StreamRoute{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/stream_routes"
+		},
+		ObjType: reflect.TypeOf(entity.StreamRoute{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.StreamRoute)
 			return utils.InterfaceToString(r.ID)
@@ -233,8 +416,16 @@ func InitStores() error {
 	}
 
 	err = InitStore(HubKeySystemConfig, GenericStoreOption{
-		BasePath: conf.ETCDConfig.Prefix + "/system_config",
-		ObjType:  reflect.TypeOf(entity.SystemConfig{}),
+		BasePathFunc: func() string {
+			prefix, ok := context_global.ContextGlobal.Value("etcdPrefix").(string)
+			if !ok || prefix == "" {
+				prefix = "/apisix"
+				fmt.Printf("[STORE][WARN] etcdPrefix missing in context, using default: %s\n", prefix)
+			}
+			fmt.Printf("[STORE] BasePathFunc prefix: %s\n", prefix)
+			return prefix + "/system_config"
+		},
+		ObjType: reflect.TypeOf(entity.SystemConfig{}),
 		KeyFunc: func(obj interface{}) string {
 			r := obj.(*entity.SystemConfig)
 			return r.ConfigName

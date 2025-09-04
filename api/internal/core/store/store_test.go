@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/storage"
 	"github.com/apisix/manager-api/internal/utils"
@@ -224,7 +225,8 @@ func TestGenericStore_Init(t *testing.T) {
 		}).Return((<-chan storage.WatchResponse)(tc.giveWatchCh))
 
 		tc.giveStore.Stg = mStorage
-		err := tc.giveStore.Init()
+		ctx := context_global.ContextGlobal
+		err := tc.giveStore.Init(ctx)
 		assert.Equal(t, tc.wantListCalled, listCalled, tc.caseDesc)
 		assert.Equal(t, tc.wantWatchCalled, watchCalled, tc.caseDesc)
 		if err != nil {

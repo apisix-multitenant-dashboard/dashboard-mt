@@ -31,6 +31,7 @@ import (
 
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/storage"
+
 	"github.com/apisix/manager-api/internal/log"
 	"github.com/apisix/manager-api/internal/utils"
 	"github.com/apisix/manager-api/internal/utils/runtime"
@@ -67,17 +68,22 @@ type GenericStore struct {
 }
 
 type GenericStoreOption struct {
-	BasePath   string
-	ObjType    reflect.Type
-	KeyFunc    func(obj interface{}) string
-	StockCheck func(obj interface{}, stockObj interface{}) error
-	Validator  Validator
-	HubKey     HubKey
+	BasePath     string
+	BasePathFunc func() string
+	ObjType      reflect.Type
+	KeyFunc      func(obj interface{}) string
+	StockCheck   func(obj interface{}, stockObj interface{}) error
+	Validator    Validator
+	HubKey       HubKey
 }
 
+func (s *GenericStore) getBasePath() string {
+
+	return s.opt.BasePathFunc()
+}
 func NewGenericStore(opt GenericStoreOption) (*GenericStore, error) {
-	if opt.BasePath == "" {
-		log.Error("base path empty")
+	if opt.BasePath == "" && opt.BasePathFunc == nil {
+		log.Error("both BasePath and BasePathFunc are empty")
 		return nil, fmt.Errorf("base path can not be empty")
 	}
 	if opt.ObjType == nil {
@@ -104,29 +110,25 @@ func NewGenericStore(opt GenericStoreOption) (*GenericStore, error) {
 	return s, nil
 }
 
-func ReInit() error {
+func ReInit(ctx context.Context) error {
 	for _, store := range storeNeedReInit {
-		if err := store.Init(); err != nil {
+		if err := store.Init(ctx); err != nil {
 			return err
 		}
 	}
-
-	//clear storeNeedReInit
 	storeNeedReInit = storeNeedReInit[:0]
 	return nil
 }
 
-func (s *GenericStore) Init() error {
+func (s *GenericStore) Init(ctx context.Context) error {
+	fmt.Println("[INIT] Store with context prefix:", ctx.Value("etcdPrefix"))
 	s.initLock.Lock()
 	defer s.initLock.Unlock()
-	//return if inited
 	if s.IsInited() {
 		return nil
 	}
-
-	return s.listAndWatch()
+	return s.listAndWatch(ctx)
 }
-
 func (s *GenericStore) Type() HubKey {
 	return s.opt.HubKey
 }
@@ -287,7 +289,7 @@ func (s *GenericStore) Create(ctx context.Context, obj interface{}) (interface{}
 		return nil, err
 	}
 
-	if err := s.Stg.Create(ctx, s.GetObjStorageKey(obj), string(bytes)); err != nil {
+	if err := s.Stg.Create(ctx, s.GetObjStorageKey(obj, ctx), string(bytes)); err != nil {
 		return nil, err
 	}
 
@@ -324,7 +326,7 @@ func (s *GenericStore) Update(ctx context.Context, obj interface{}, createIfNotE
 		log.Errorf("json marshal failed: %s", err)
 		return nil, fmt.Errorf("json marshal failed: %s", err)
 	}
-	if err := s.Stg.Update(ctx, s.GetObjStorageKey(obj), string(bs)); err != nil {
+	if err := s.Stg.Update(ctx, s.GetObjStorageKey(obj, ctx), string(bs)); err != nil {
 		return nil, err
 	}
 
@@ -334,24 +336,26 @@ func (s *GenericStore) Update(ctx context.Context, obj interface{}, createIfNotE
 func (s *GenericStore) BatchDelete(ctx context.Context, keys []string) error {
 	var storageKeys []string
 	for i := range keys {
-		storageKeys = append(storageKeys, s.GetStorageKey(keys[i]))
+		storageKeys = append(storageKeys, s.GetStorageKey(keys[i], ctx))
 	}
 
 	return s.Stg.BatchDelete(ctx, storageKeys)
 }
 
-func (s *GenericStore) listAndWatch() error {
-	lc, lcancel := context.WithTimeout(context.TODO(), 5*time.Second)
+func (s *GenericStore) listAndWatch(ctx context.Context) error {
+
+	lc, lcancel := context.WithTimeout(ctx, 5*time.Second)
 	defer lcancel()
-	ret, err := s.Stg.List(lc, s.opt.BasePath)
+	ret, err := s.Stg.List(lc, s.getBasePath())
 	if err != nil {
 		return err
 	}
 	for i := range ret {
-		key := ret[i].Key[len(s.opt.BasePath)+1:]
+		key := ret[i].Key[len(s.getBasePath())+1:]
+		fmt.Println("[DEBUG] Storing cache key:", key)
 		objPtr, err := s.StringToObjPtr(ret[i].Value, key)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error occurred while initializing logical store: %s, err: %v", s.opt.BasePath, err)
+			_, _ = fmt.Fprintf(os.Stderr, "Error occurred while initializing logical store: %s, err: %v", s.getBasePath(), err)
 			return err
 		}
 
@@ -367,7 +371,7 @@ func (s *GenericStore) listAndWatch() error {
 
 func (s *GenericStore) watch() context.CancelFunc {
 	c, cancel := context.WithCancel(context.TODO())
-	ch := s.Stg.Watch(c, s.opt.BasePath)
+	ch := s.Stg.Watch(c, s.getBasePath())
 	go func() {
 		defer func() {
 			if !s.closing {
@@ -389,7 +393,7 @@ func (s *GenericStore) watch() context.CancelFunc {
 			for i := range event.Events {
 				switch event.Events[i].Type {
 				case storage.EventTypePut:
-					key := event.Events[i].Key[len(s.opt.BasePath)+1:]
+					key := event.Events[i].Key[len(s.getBasePath())+1:]
 					objPtr, err := s.StringToObjPtr(event.Events[i].Value, key)
 					if err != nil {
 						log.Warnf("value convert to obj failed: %s", err)
@@ -397,7 +401,7 @@ func (s *GenericStore) watch() context.CancelFunc {
 					}
 					s.cache.Store(key, objPtr)
 				case storage.EventTypeDelete:
-					s.cache.Delete(event.Events[i].Key[len(s.opt.BasePath)+1:])
+					s.cache.Delete(event.Events[i].Key[len(s.getBasePath())+1:])
 				}
 			}
 		}
@@ -428,12 +432,12 @@ func (s *GenericStore) StringToObjPtr(str, key string) (interface{}, error) {
 	return ret, nil
 }
 
-func (s *GenericStore) GetObjStorageKey(obj interface{}) string {
-	return s.GetStorageKey(s.opt.KeyFunc(obj))
+func (s *GenericStore) GetObjStorageKey(obj interface{}, ctx context.Context) string {
+	return s.GetStorageKey(s.opt.KeyFunc(obj), ctx)
 }
 
-func (s *GenericStore) GetStorageKey(key string) string {
-	return fmt.Sprintf("%s/%s", s.opt.BasePath, key)
+func (s *GenericStore) GetStorageKey(key string, ctx context.Context) string {
+	return fmt.Sprintf("%s/%s", s.getBasePath(), key)
 }
 
 func (s *GenericStore) IsInited() bool {

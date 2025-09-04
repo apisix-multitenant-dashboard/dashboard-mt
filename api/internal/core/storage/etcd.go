@@ -20,12 +20,14 @@ package storage
 import (
 	"context"
 	"fmt"
+
 	"time"
 
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/apisix/manager-api/internal/conf"
+
 	"github.com/apisix/manager-api/internal/log"
 	"github.com/apisix/manager-api/internal/utils"
 	"github.com/apisix/manager-api/internal/utils/runtime"
@@ -101,7 +103,38 @@ func Close() error {
 	return nil
 }
 
+// func applyPrefix(key string) string {
+// 	prefix := context_global.ContextGlobal.Value("etcdPrefix").(string)
+// 	if prefix == "" {
+// 		prefix = "/apisix" // valeur par défaut
+// 	}
+// 	prefix = strings.TrimRight(prefix, "/")
+// 	key = strings.TrimLeft(key, "/")
+
+// 	// Si key commence par prefix, ok, renvoyer avec /
+// 	if strings.HasPrefix(key, strings.TrimLeft(prefix, "/")) {
+// 		return "/" + key
+// 	}
+
+// 	// Si key commence par un autre prefix /apisix (différent), on remplace ce prefix par le bon
+// 	defaultPrefix := "apisix"
+// 	if strings.HasPrefix(key, defaultPrefix) && prefix != "/"+defaultPrefix {
+// 		key = strings.TrimPrefix(key, defaultPrefix)
+// 		key = strings.TrimLeft(key, "/")
+// 		return path.Join(prefix, key)
+// 	}
+
+// 	// Sinon on ajoute juste le prefix
+// 	return path.Join(prefix, key)
+// }
+
 func (s *EtcdV3Storage) Get(ctx context.Context, key string) (string, error) {
+	// key = applyPrefix(key)
+
+	if key == "" {
+		log.Error("key is empty")
+		return "", fmt.Errorf("key is empty")
+	}
 	resp, err := s.client.Get(ctx, key)
 	if err != nil {
 		log.Errorf("etcd get failed: %s", err)
@@ -116,6 +149,9 @@ func (s *EtcdV3Storage) Get(ctx context.Context, key string) (string, error) {
 }
 
 func (s *EtcdV3Storage) List(ctx context.Context, key string) ([]Keypair, error) {
+
+	// key = applyPrefix(key)
+	fmt.Printf("List called with key: %s\n", key)
 	resp, err := s.client.Get(ctx, key, clientv3.WithPrefix())
 	if err != nil {
 		log.Errorf("etcd get failed: %s", err)
@@ -146,6 +182,7 @@ func (s *EtcdV3Storage) List(ctx context.Context, key string) ([]Keypair, error)
 }
 
 func (s *EtcdV3Storage) Create(ctx context.Context, key, val string) error {
+
 	_, err := s.client.Put(ctx, key, val)
 	if err != nil {
 		log.Errorf("etcd put failed: %s", err)
@@ -155,6 +192,7 @@ func (s *EtcdV3Storage) Create(ctx context.Context, key, val string) error {
 }
 
 func (s *EtcdV3Storage) Update(ctx context.Context, key, val string) error {
+	// key = applyPrefix(key)
 	_, err := s.client.Put(ctx, key, val)
 	if err != nil {
 		log.Errorf("etcd put failed: %s", err)
@@ -164,7 +202,11 @@ func (s *EtcdV3Storage) Update(ctx context.Context, key, val string) error {
 }
 
 func (s *EtcdV3Storage) BatchDelete(ctx context.Context, keys []string) error {
+
 	for i := range keys {
+		fmt.Printf("i:%s", i)
+		//keys[i] = applyPrefix(keys[i])
+		fmt.Printf("Delete called with key: %s", keys[i])
 		resp, err := s.client.Delete(ctx, keys[i])
 		if err != nil {
 			log.Errorf("delete etcd key[%s] failed: %s", keys[i], err)
@@ -179,6 +221,7 @@ func (s *EtcdV3Storage) BatchDelete(ctx context.Context, keys []string) error {
 }
 
 func (s *EtcdV3Storage) Watch(ctx context.Context, key string) <-chan WatchResponse {
+	//	key = applyPrefix(key)
 	eventChan := s.client.Watch(ctx, key, clientv3.WithPrefix())
 	ch := make(chan WatchResponse, 1)
 	go func() {

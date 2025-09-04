@@ -37,6 +37,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -45,6 +46,8 @@ import (
 	"github.com/shiningrush/droplet/data"
 	"github.com/shiningrush/droplet/middleware"
 
+	"github.com/apisix/manager-api/internal/conf"
+	"github.com/apisix/manager-api/internal/core/context_global"
 	"github.com/apisix/manager-api/internal/core/entity"
 	"github.com/apisix/manager-api/internal/core/store"
 	"github.com/apisix/manager-api/internal/utils"
@@ -54,6 +57,61 @@ type RegisterFactory func() (RouteRegister, error)
 
 type RouteRegister interface {
 	ApplyRoute(r *gin.Engine)
+}
+
+func GetRoutes(c *gin.Context) {
+	log.Println("Handler GetRoutes appelé")
+
+	clusterConfigI, ok := c.Get("clusterConfig")
+	if !ok {
+		log.Println("GetRoutes: clusterConfig manquant dans le contexte")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cluster non trouvé dans le contexte"})
+		return
+	}
+	clusterConfig := clusterConfigI.(*conf.ClusterConfig)
+	log.Printf("GetRoutes: clusterConfig récupéré: prefix=%s", clusterConfig.Prefix)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "cluster récupéré avec succès",
+		"prefix":  clusterConfig.Prefix,
+	})
+}
+
+func ClusterSwitchHandler(c *gin.Context) {
+	var req struct {
+		Prefix string `json:"prefix"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request body",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if req.Prefix == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "prefix is required",
+		})
+		return
+	}
+	var prefix string
+	if req.Prefix == "default" {
+		prefix = "/apisix"
+	} else {
+		prefix = req.Prefix
+	}
+
+	if prefix[0] != '/' {
+		prefix = "/" + prefix
+	}
+	fmt.Printf("[Cluster Switch] Switching to: %s\n", prefix)
+
+	context_global.SetEtcdPrefix(prefix)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("Cluster switched successfully to prefix: %s", req.Prefix),
+	})
 }
 
 func SpecCodeResponse(err error) *data.SpecCodeResponse {
