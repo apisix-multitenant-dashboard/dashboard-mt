@@ -17,23 +17,23 @@
 #
 -->
 
-# Apache APISIX Dashboard
+# APISIX Multitenant Dashboard
+A modern, interactive, multitenant control plane for Apache APISIX with centralized monitoring.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/apache/apisix-dashboard/blob/master/LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/apache/apisix-dashboard)](https://goreportcard.com/report/github.com/apache/apisix-dashboard)
-[![DockerHub](https://img.shields.io/docker/pulls/apache/apisix-dashboard.svg)](https://hub.docker.com/r/apache/apisix-dashboard)
-[![Cypress.io](https://img.shields.io/badge/tested%20with-Cypress-04C38E.svg)](https://www.cypress.io/)
-[![Slack](https://badgen.net/badge/Slack/Join%20Apache%20APISIX?icon=slack)](https://apisix.apache.org/slack)
+[![Docker Pulls](https://img.shields.io/docker/pulls/your-org/apisix-dashboard)]()
+[![Node Version](https://img.shields.io/badge/Node-18+-brightgreen)]()
+[![Go Version](https://img.shields.io/badge/Go-1.20+-blue)]()
 
-<p align="center">
-  <a href="https://apisix.apache.org/">Website</a> •
-  <a href="https://github.com/apache/apisix/tree/master/docs">Docs</a> •
-  <a href="https://twitter.com/apacheapisix">Twitter</a>
-</p>
-
-- The master version should be used with Apache APISIX master version.
-
-- The latest released version is [3.0.1](https://apisix.apache.org/downloads/) and is compatible with [Apache APISIX 3.0.x](https://apisix.apache.org/downloads/).
+## Table of Contents
+- [What's Apache APISIX Dashboard](#whats-apache-apisix-dashboard)
+- [Description](#description)
+- [Features](#features)
+- [Project structure](#project-structure)
+- [Demo](#demo)
+- [Installation and Setup](#installation-and-setup)
+  - [Prerequisites](#prerequisites)
+  - [Docker Environment](#docker-environment)
 
 ## What's Apache APISIX Dashboard
 
@@ -45,18 +45,26 @@ Note: Currently the Dashboard does not have complete coverage of Apache APISIX f
 
 ![architecture](./docs/assets/images/architecture.png)
 
-## Demo
+## Description
+This project is a complete revamp of the **Apache APISIX Dashboard** to make it **multitenant, interactive, and centralized**, with advanced monitoring via Prometheus and multi-instance setup through Docker Compose.  
 
-[Online Playground](https://apisix-dashboard.apiseven.com/)
+The Dashboard allows managing multiple APISIX instances while providing a super-admin centralized view of all instances and their performance.
 
-```text
-Username: admin
-Password: admin
-```
+---
+## Features
+- **Multitenancy support:** manage multiple APISIX instances in a single dashboard.
+- **ETCD prefix isolation:** each instance has a dedicated ETCD prefix for data separation.
+- **Administration rights:** assign instance-specific admin roles; super-admin oversees all instances.
+- **Frontend instance selector:** switch between instances seamlessly; API calls adapt automatically.
+- **Status & counters:** display UP/DOWN status and key metrics:
+  - Routes, Services, Upstreams, Consumers, Protocol Buffers, Plugins, SSLs
+- **Metrics visualization:** Prometheus metrics aggregated and displayed in interactive charts:
+  - Connections: accepted, active, reading, writing, waiting
+  - Total requests per instance
+- **Responsive design** using Ant Design and Recharts.
+- **Pagination:** automatically handles large numbers of instances.
 
-## Works with APISIX Ingress Controller
-
-Currently, APISIX Ingress Controller automatically manipulates some APISIX resources, which is not very compatible with APISIX Dashboard. In addition, users should not modify resources labeled `managed-by: apisix-ingress-controllers` via APISIX Dashboard.
+---
 
 ## Project structure
 
@@ -79,31 +87,23 @@ Currently, APISIX Ingress Controller automatically manipulates some APISIX resou
 1. The `api` directory is used to store the `Manager API` source codes, which is used to manage `etcd` and provide APIs to the frontend interface.
 2. The `web` directory is used to store the frontend source codes.
 
-## Build then launch
+## Demo
 
-Support the following ways currently.
+[Online Playground](https://apisix-dashboard.apiseven.com/)
 
-- [Docker, RPM, Source Codes](./docs/en/latest/install.md)
-- [Rebuild docker image](./docs/en/latest/deploy-with-docker.md)
+```text
+Username: admin
+Password: admin
+```
+## Installation and Setup
 
-## Development
+### Prerequisites
+- Docker & Docker Compose
+- Node.js >= 18
+- Go >= 1.20
+- An ETCD database for the APISIX backend
 
-Pull requests are encouraged and always welcome. [Pick an issue](https://github.com/apache/apisix-dashboard/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) and help us out!
-
-Please refer to the [Development Guide](./docs/en/latest/develop.md).
-
-## User Guide
-
-Please refer to the [User Guide](./docs/en/latest/USER_GUIDE.md).
-
-## Contributing
-
-Please refer to the [Contribution Guide](./CONTRIBUTING.md) for a more detailed information.
-
-## FAQ
-
-Please refer to the [FAQ](./docs/en/latest/FAQ.md) for more known issues.
-
-## License
-
-[Apache License 2.0](./LICENSE)
+### Docker Environment
+```bash
+git clone https://github.com/apisix-multitenant-dashboard/docker-infra.git
+cd  example
