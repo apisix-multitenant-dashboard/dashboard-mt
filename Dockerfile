@@ -14,56 +14,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-FROM alpine:latest as pre-build
-
-ARG APISIX_DASHBOARD_VERSION=master
-
-RUN set -x \
-    && apk add --no-cache --virtual .builddeps git \
-    && git clone https://github.com/apache/apisix-dashboard.git -b ${APISIX_DASHBOARD_VERSION} /usr/local/apisix-dashboard \
-    && cd /usr/local/apisix-dashboard && git clean -Xdf \
-    && rm -f ./.githash && git log --pretty=format:"%h" -1 > ./.githash
-
-FROM golang:1.19 as api-builder
-
-ARG ENABLE_PROXY=false
-
+# Étape 1 : Backend
+FROM golang:1.19 AS api-builder
 WORKDIR /usr/local/apisix-dashboard
-
-COPY --from=pre-build /usr/local/apisix-dashboard .
-
-RUN if [ "$ENABLE_PROXY" = "true" ] ; then go env -w GOPROXY=https://goproxy.io,direct ; fi \
-    && go env -w GO111MODULE=on \
+COPY api/ ./api/
+COPY api/go.mod api/go.sum ./
+RUN go env -w GO111MODULE=on \
     && CGO_ENABLED=0 ./api/build.sh
 
-FROM node:16-alpine as fe-builder
-
-ARG ENABLE_PROXY=false
-
-WORKDIR /usr/local/apisix-dashboard
-
-COPY --from=pre-build /usr/local/apisix-dashboard .
-
+# Étape 2 : Frontend
+FROM node:16-bullseye AS fe-builder
 WORKDIR /usr/local/apisix-dashboard/web
 
-RUN if [ "$ENABLE_PROXY" = "true" ] ; then yarn config set registry https://registry.npmmirror.com/ ; fi \
-    && yarn install \
-    && yarn build
+# Fix OpenSSL 3 pour Node 20
+ENV NODE_OPTIONS=--max_old_space_size=4096
 
-FROM alpine:latest as prod
+# Installer les dépendances système nécessaires
+RUN apt-get update && apt-get install -y python3 make g++ bash git \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG ENABLE_PROXY=false
+# Copier uniquement les fichiers de dépendances pour utiliser le cache Docker
+COPY web/package.json web/yarn.lock ./
 
-RUN if [ "$ENABLE_PROXY" = "true" ] ; then sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories ; fi
+# Installer les dépendances
+RUN yarn install --ignore-scripts --ignore-engines
 
+# Copier le reste du frontend
+COPY web/ ./
+
+# Builder le frontend
+RUN yarn build && ls -la ../output/html
+
+# Étape 3 : Runtime
+FROM alpine:latest AS prod
 WORKDIR /usr/local/apisix-dashboard
+RUN apk add --no-cache ca-certificates bash
 
+# Copier backend et frontend
 COPY --from=api-builder /usr/local/apisix-dashboard/output/ ./
-
-COPY --from=fe-builder /usr/local/apisix-dashboard/output/ ./
+COPY --from=fe-builder /usr/local/apisix-dashboard/output/html ./html
 
 RUN mkdir logs
 
 EXPOSE 9000
-
 CMD [ "/usr/local/apisix-dashboard/manager-api" ]
